@@ -128,3 +128,7 @@ def main():
             sys.exit(1)
     else:
         print("Skipping GitHub release creation (--no-release specified).")
+
+
+if __name__ == "__main__":
+    main()
