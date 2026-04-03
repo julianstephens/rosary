@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Optional
 
 
 @dataclass(frozen=True)
 class Mystery:
     name: str
     description: str
-    scripture_ref: str  # e.g. "Luke 1:26-38" — passed to bible-api.com
+    scripture_ref: Optional[str]  # None when no direct scriptural citation exists
+    scripture_note: Optional[str] = None  # displayed in place of a verse
 
 
 @dataclass(frozen=True)
@@ -102,12 +104,22 @@ GLORIOUS = MysterySet(
         Mystery(
             name="The Assumption of Mary",
             description="At the end of her earthly life, Mary is taken body and soul into heaven.",
-            scripture_ref="Revelation 12:1",
+            scripture_ref=None,
+            scripture_note=(
+                "The Assumption is a defined dogma of the Church (Munificentissimus Deus, 1950) "
+                "rather than a direct scriptural event. Revelation 12 is understood by many "
+                "as a typological reference to Mary."
+            ),
         ),
         Mystery(
             name="The Coronation of Mary",
             description="Mary is crowned Queen of Heaven and Earth.",
-            scripture_ref="Revelation 12:1",
+            scripture_ref=None,
+            scripture_note=(
+                "The Coronation is a defined dogma of the Church rooted in Sacred Tradition. "
+                'Revelation 12:1 — "A great sign appeared in heaven: a woman clothed with '
+                'the sun, with the moon under her feet and a crown of twelve stars on her head."'
+            ),
         ),
     ),
 )

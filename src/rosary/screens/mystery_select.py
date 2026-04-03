@@ -79,6 +79,6 @@ class MysterySelectScreen(Screen):
                 return
             key = (selected.id or "").removeprefix("mystery-")
             self.app.mystery_set_key = key  # type: ignore
-            from rosary.screens.rosary import RosaryScreen
+            from rosary.screens.intentions import IntentionsScreen
 
-            self.app.push_screen(RosaryScreen())
+            self.app.push_screen(IntentionsScreen())

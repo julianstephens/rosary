@@ -22,6 +22,7 @@ class Step:
     title: str
     body: str  # Markdown-formatted content
     bible_ref: Optional[str] = None
+    no_scripture_note: Optional[str] = None  # shown when bible_ref is None
     decade: int = 0  # 0 = opening/closing, 1-5 = decade number
     is_mystery: bool = False
     is_decade: bool = False
@@ -71,6 +72,7 @@ def build_steps(mystery_set: MysterySet, prayers: dict) -> list[Step]:
                 title=f"Mystery {decade_num}/5 — {mystery.name}",
                 body=mystery.description,
                 bible_ref=mystery.scripture_ref,
+                no_scripture_note=mystery.scripture_note,
                 decade=decade_num,
                 is_mystery=True,
             )
@@ -154,6 +156,7 @@ class RosaryScreen(Screen):
         Binding("right", "next_step", "Next", priority=True, show=False),
         Binding("backspace", "prev_step", "Back", priority=True),
         Binding("left", "prev_step", "Back", priority=True, show=False),
+        Binding("r", "pray_again", "Pray Again", priority=True, show=False),
         Binding("q", "app.quit", "Quit", priority=True),
     ]
 
@@ -184,20 +187,18 @@ class RosaryScreen(Screen):
 
     def _build_content(self) -> str:
         step = self._current
-        if step.is_mystery and step.bible_ref:
-            verse = self._verse_cache.get(self._index, "_Loading scripture verse…_")
-            language: str = getattr(self.app, "language", "English")
-            ref_note = (
-                f"**Scripture: {step.bible_ref}** _(KJV)_"
-                if language == "Latin"
-                else f"**Scripture: {step.bible_ref}**"
-            )
-            return (
-                f"{step.body}\n\n"
-                f"---\n\n"
-                f"{ref_note}\n\n"
-                f"{verse}"
-            )
+        if step.is_mystery:
+            if step.bible_ref:
+                verse = self._verse_cache.get(self._index, "_Loading scripture verse…_")
+                language: str = getattr(self.app, "language", "English")
+                ref_note = (
+                    f"**Scripture: {step.bible_ref}** _(KJV)_"
+                    if language == "Latin"
+                    else f"**Scripture: {step.bible_ref}**"
+                )
+                return f"{step.body}\n\n---\n\n{ref_note}\n\n{verse}"
+            elif step.no_scripture_note:
+                return f"{step.body}\n\n---\n\n*{step.no_scripture_note}*"
         return step.body
 
     def _render_step(self) -> None:
@@ -242,14 +243,22 @@ class RosaryScreen(Screen):
             self._index -= 1
             self._render_step()
 
+    def action_pray_again(self) -> None:
+        # Pop back to WelcomeScreen then push a fresh MysterySelectScreen
+        from rosary.screens.mystery_select import MysterySelectScreen
+
+        while len(self.app.screen_stack) > 1:
+            self.app.pop_screen()
+        self.app.push_screen(MysterySelectScreen())
+
     def _show_completion(self) -> None:
         self.query_one("#step-title", Label).update("Rosary Complete ✝")
         self.query_one("#step-body", Markdown).update(
             "You have completed the Rosary.\n\n"
             "May Our Lady intercede for you.\n\n"
             "---\n\n"
-            "Press **Q** to exit or **Backspace** to go back."
+            "Press **R** to pray again, **Backspace** to go back, or **Q** to quit."
         )
         self.query_one("#step-counter", Label).update(
-            "Complete  ·  Backspace = Back  ·  Q = Quit"
+            "Complete  ·  R = Pray Again  ·  Backspace = Back  ·  Q = Quit"
         )
