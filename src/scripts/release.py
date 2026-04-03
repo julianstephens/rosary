@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import os
 import re
@@ -83,7 +82,7 @@ def main():
 
     args = parser.parse_args()
 
-    root_dir = Path(__file__).parent.parent
+    root_dir = Path(__file__).parent.parent.parent
     changelog_path = root_dir / "CHANGELOG.md"
 
     print(f"Reading {changelog_path}...")
@@ -129,7 +128,3 @@ def main():
             sys.exit(1)
     else:
         print("Skipping GitHub release creation (--no-release specified).")
-
-
-if __name__ == "__main__":
-    main()
