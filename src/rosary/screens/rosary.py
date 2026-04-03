@@ -10,53 +10,62 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.screen import Screen
-from textual.widgets import Footer, Label, RichLog
+from textual.widgets import Footer, Label, Markdown
 
 from rosary.api import fetch_verse
 from rosary.mysteries import ALL_SETS, MysterySet
-from rosary.prayers import (
-    APOSTLES_CREED,
-    CLOSING_PRAYER,
-    FATIMA_PRAYER,
-    GLORY_BE,
-    HAIL_HOLY_QUEEN,
-    HAIL_MARY,
-    OUR_FATHER,
-    SIGN_OF_THE_CROSS,
-)
+from rosary.prayers import get_prayers
 
 
 @dataclass
 class Step:
     title: str
-    body: str
-    # If set, the body will be replaced with the fetched verse once loaded.
+    body: str  # Markdown-formatted content
     bible_ref: Optional[str] = None
-    # Calculated fields for display
     decade: int = 0  # 0 = opening/closing, 1-5 = decade number
     is_mystery: bool = False
+    is_decade: bool = False
 
 
-def build_steps(mystery_set: MysterySet) -> list[Step]:
+def _md(text: str) -> str:
+    """Convert plain prayer text to Markdown with preserved line breaks."""
+    return text.replace("\n", "  \n")
+
+
+def _build_decade_markdown(prayers: dict) -> str:
+    return (
+        f"## Our Father\n\n{_md(prayers['our_father'])}\n\n"
+        f"---\n\n"
+        f"## Hail Mary × 10\n\n{_md(prayers['hail_mary'])}\n\n"
+        f"---\n\n"
+        f"## Glory Be\n\n{_md(prayers['glory_be'])}\n\n"
+        f"---\n\n"
+        f"## Fatima Prayer\n\n{_md(prayers['fatima_prayer'])}"
+    )
+
+
+def build_steps(mystery_set: MysterySet, prayers: dict) -> list[Step]:
     """Return the full ordered list of prayer steps for one Rosary."""
     steps: list[Step] = []
 
     # ── Opening ──────────────────────────────────────────────────────────────
-    steps.append(Step(title="Sign of the Cross", body=SIGN_OF_THE_CROSS))
-    steps.append(Step(title="The Apostles' Creed", body=APOSTLES_CREED))
-    steps.append(Step(title="Our Father", body=OUR_FATHER))
-
-    intentions = [
-        ("Hail Mary (for Faith)", HAIL_MARY),
-        ("Hail Mary (for Hope)", HAIL_MARY),
-        ("Hail Mary (for Charity)", HAIL_MARY),
-    ]
-    for title, text in intentions:
-        steps.append(Step(title=title, body=text))
-    steps.append(Step(title="Glory Be", body=GLORY_BE))
+    steps.append(
+        Step(title="Sign of the Cross", body=_md(prayers["sign_of_the_cross"]))
+    )
+    steps.append(Step(title="The Apostles' Creed", body=_md(prayers["apostles_creed"])))
+    steps.append(Step(title="Our Father", body=_md(prayers["our_father"])))
+    for label in (
+        "Hail Mary (for Faith)",
+        "Hail Mary (for Hope)",
+        "Hail Mary (for Charity)",
+    ):
+        steps.append(Step(title=label, body=_md(prayers["hail_mary"])))
+    steps.append(Step(title="Glory Be", body=_md(prayers["glory_be"])))
 
     # ── Five Decades ─────────────────────────────────────────────────────────
+    decade_md = _build_decade_markdown(prayers)
     for decade_num, mystery in enumerate(mystery_set.mysteries, start=1):
+        # Mystery announcement — verse fetched lazily
         steps.append(
             Step(
                 title=f"Mystery {decade_num}/5 — {mystery.name}",
@@ -66,22 +75,22 @@ def build_steps(mystery_set: MysterySet) -> list[Step]:
                 is_mystery=True,
             )
         )
-        steps.append(Step(title="Our Father", body=OUR_FATHER, decade=decade_num))
-        for bead in range(1, 11):
-            steps.append(
-                Step(
-                    title=f"Hail Mary {bead}/10",
-                    body=HAIL_MARY,
-                    decade=decade_num,
-                )
+        # Full decade prayers on a single screen
+        steps.append(
+            Step(
+                title=f"Decade {decade_num} — Prayers",
+                body=decade_md,
+                decade=decade_num,
+                is_decade=True,
             )
-        steps.append(Step(title="Glory Be", body=GLORY_BE, decade=decade_num))
-        steps.append(Step(title="Fatima Prayer", body=FATIMA_PRAYER, decade=decade_num))
+        )
 
     # ── Closing ───────────────────────────────────────────────────────────────
-    steps.append(Step(title="Hail Holy Queen", body=HAIL_HOLY_QUEEN))
-    steps.append(Step(title="Closing Prayer", body=CLOSING_PRAYER))
-    steps.append(Step(title="Sign of the Cross", body=SIGN_OF_THE_CROSS))
+    steps.append(Step(title="Hail Holy Queen", body=_md(prayers["hail_holy_queen"])))
+    steps.append(Step(title="Closing Prayer", body=_md(prayers["closing_prayer"])))
+    steps.append(
+        Step(title="Sign of the Cross", body=_md(prayers["sign_of_the_cross"]))
+    )
 
     return steps
 
@@ -127,14 +136,6 @@ class RosaryScreen(Screen):
         width: 100%;
         height: 1fr;
         padding: 0 6;
-        overflow-y: auto;
-    }
-
-    #verse-label {
-        text-align: center;
-        color: $text-muted;
-        padding: 0 4 1 4;
-        width: 100%;
     }
 
     #step-counter {
@@ -159,10 +160,10 @@ class RosaryScreen(Screen):
     def __init__(self) -> None:
         super().__init__()
         mystery_set = ALL_SETS[self.app.mystery_set_key]  # type: ignore[attr-defined]
-        self._steps = build_steps(mystery_set)
+        language: str = getattr(self.app, "language", "English")
+        self._steps = build_steps(mystery_set, get_prayers(language))
         self._index = 0
         self._mystery_set_name = mystery_set.name
-        # Cache for fetched verses: step index → verse text
         self._verse_cache: dict[int, str] = {}
 
     @property
@@ -174,69 +175,58 @@ class RosaryScreen(Screen):
             yield Label("", id="set-label")
             yield Label("", id="progress-label")
         yield Label("", id="step-title")
-        yield Label("", id="verse-label")
-        yield RichLog(id="step-body", highlight=False, markup=False, wrap=True)
+        yield Markdown("", id="step-body")
         yield Label("", id="step-counter")
         yield Footer()
 
     def on_mount(self) -> None:
         self._render_step()
 
+    def _build_content(self) -> str:
+        step = self._current
+        if step.is_mystery and step.bible_ref:
+            verse = self._verse_cache.get(self._index, "_Loading scripture verse…_")
+            language: str = getattr(self.app, "language", "English")
+            ref_note = (
+                f"**Scripture: {step.bible_ref}** _(KJV)_"
+                if language == "Latin"
+                else f"**Scripture: {step.bible_ref}**"
+            )
+            return (
+                f"{step.body}\n\n"
+                f"---\n\n"
+                f"{ref_note}\n\n"
+                f"{verse}"
+            )
+        return step.body
+
     def _render_step(self) -> None:
         step = self._current
         total = len(self._steps)
 
-        # Header
         self.query_one("#set-label", Label).update(self._mystery_set_name)
         decade_text = f"Decade {step.decade}/5" if step.decade else "Opening / Closing"
         self.query_one("#progress-label", Label).update(decade_text)
-
-        # Step title
         self.query_one("#step-title", Label).update(step.title)
-
-        # Verse reference label
-        verse_label = self.query_one("#verse-label", Label)
-        if step.bible_ref:
-            verse_label.update(f"Scripture: {step.bible_ref}")
-            verse_label.display = True
-        else:
-            verse_label.update("")
-            verse_label.display = False
-
-        # Body
-        body_log = self.query_one("#step-body", RichLog)
-        body_log.clear()
-
-        if step.is_mystery and step.bible_ref:
-            if self._index in self._verse_cache:
-                verse_text = self._verse_cache[self._index]
-                body_log.write(step.body)
-                body_log.write("")
-                body_log.write("─" * 40)
-                body_log.write("")
-                body_log.write(verse_text)
-            else:
-                body_log.write(step.body)
-                body_log.write("")
-                body_log.write("Loading scripture verse…")
-                self._fetch_verse_for_current(self._index, step.bible_ref)
-        else:
-            body_log.write(step.body)
-
-        # Step counter
+        self.query_one("#step-body", Markdown).update(self._build_content())
         self.query_one("#step-counter", Label).update(
-            f"Step {self._index + 1} of {total}  ·  Space = Next  ·  Backspace = Back  ·  Q = Quit"
+            f"Step {self._index + 1} of {total}"
+            "  ·  Space = Next  ·  Backspace = Back  ·  Q = Quit"
         )
+
+        if step.is_mystery and step.bible_ref and self._index not in self._verse_cache:
+            self._fetch_verse_for_current(self._index, step.bible_ref)
 
     @work(exclusive=False)
     async def _fetch_verse_for_current(self, step_index: int, ref: str) -> None:
-        translation_id: str = self.app.translation_id  # type: ignore[attr-defined]
+        language: str = getattr(self.app, "language", "English")
+        # The Clementine Vulgate API requires Latin book names for ref parsing.
+        # Always use KJV for scripture lookups so English refs resolve correctly.
+        translation_id = "kjv" if language == "Latin" else self.app.translation_id  # type: ignore[attr-defined]
         verse_text = await fetch_verse(ref, translation_id)
-        if verse_text:
-            self._verse_cache[step_index] = verse_text
-        else:
-            self._verse_cache[step_index] = "(Verse not available for this translation)"
-        # Only re-render if we are still on the same step
+        self._verse_cache[step_index] = (
+            verse_text or "_(Verse not available for this translation.)_"
+        )
         if self._index == step_index:
             self._render_step()
 
@@ -253,14 +243,12 @@ class RosaryScreen(Screen):
             self._render_step()
 
     def _show_completion(self) -> None:
-        body_log = self.query_one("#step-body", RichLog)
         self.query_one("#step-title", Label).update("Rosary Complete ✝")
-        self.query_one("#verse-label", Label).display = False
-        body_log.clear()
-        body_log.write(
+        self.query_one("#step-body", Markdown).update(
             "You have completed the Rosary.\n\n"
             "May Our Lady intercede for you.\n\n"
-            "Press Q to exit or Backspace to go back."
+            "---\n\n"
+            "Press **Q** to exit or **Backspace** to go back."
         )
         self.query_one("#step-counter", Label).update(
             "Complete  ·  Backspace = Back  ·  Q = Quit"

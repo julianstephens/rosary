@@ -64,19 +64,20 @@ _FALLBACK_TRANSLATIONS: list[dict] = [
 ]
 
 
-async def fetch_translations() -> list[dict]:
-    """Return a list of translation dicts with keys: identifier, name, language.
+async def fetch_translations() -> tuple[list[dict], bool]:
+    """Return (translations, api_error).
 
-    Falls back to the static list if the request fails.
+    translations: list of dicts with keys identifier, name, language.
+    api_error: True if the live API could not be reached (fallback used).
     """
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(f"{BASE_URL}/data")
             response.raise_for_status()
             data = response.json()
-            return data.get("translations", _FALLBACK_TRANSLATIONS)
-        except (httpx.HTTPError, KeyError):
-            return _FALLBACK_TRANSLATIONS
+            return data.get("translations", _FALLBACK_TRANSLATIONS), False
+        except (httpx.HTTPError, KeyError, ValueError):
+            return _FALLBACK_TRANSLATIONS, True
 
 
 async def fetch_verse(ref: str, translation_id: str) -> str:
