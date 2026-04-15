@@ -1,3 +1,7 @@
+## v1.0.2
+
+- Add vertical scroll support
+
 ## v1.0.1
 
 - Removes `release` script
