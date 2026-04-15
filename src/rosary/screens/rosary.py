@@ -138,6 +138,7 @@ class RosaryScreen(Screen):
         width: 100%;
         height: 1fr;
         padding: 0 6;
+        overflow-y: auto;
     }
 
     #step-counter {
